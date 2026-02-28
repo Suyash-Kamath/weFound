@@ -5,9 +5,38 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>weFound</title>
+    <style>
+      :root { color-scheme: light; }
+      body { margin: 0; font-family: "Outfit", system-ui, -apple-system, Segoe UI, sans-serif; }
+      .ssr-shell {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(1200px 600px at 20% 20%, #f6f2ff 0%, #f8f6ff 35%, #ffffff 100%);
+        color: #1b1531;
+      }
+      .ssr-card {
+        padding: 32px 36px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(27, 21, 49, 0.12);
+        box-shadow: 0 20px 60px rgba(27, 21, 49, 0.08);
+        text-align: center;
+      }
+      .ssr-title { font-size: 36px; letter-spacing: -0.02em; margin: 0 0 8px; }
+      .ssr-subtitle { margin: 0; font-size: 16px; opacity: 0.7; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="ssr-shell">
+        <div class="ssr-card">
+          <h1 class="ssr-title">weFound</h1>
+          <p class="ssr-subtitle">Discover, share, and recover what matters.</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
