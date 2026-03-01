@@ -39,7 +39,7 @@ export function Footer() {
           <div className="footer-col">
             <h4>Contact</h4>
             <ul className="contact-list">
-              <li><Mail /> <a href="mailto:support@wefound.com">support@wefound.com</a></li>
+              <li><Mail /> <a href="mailto:wefoundhq@gmail.com">wefoundhq@gmail.com</a></li>
               <li><Phone /> <span>+91 9999999999</span></li>
               <li><MapPin /> <span>Mumbai,India</span></li>
             </ul>
