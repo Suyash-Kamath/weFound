@@ -1,12 +1,12 @@
 export const pricingTiers = [
   {
     name: "Starter",
-    price: "$9",
+    price: "₹50",
     subtitle: "Best for individuals",
-    description: "Protect up to 5 items with dynamic QR profiles.",
+    description: "Protect item with dynamic QR profiles.",
     highlight: false,
     features: [
-      "5 dynamic QR stickers",
+      
       "Privacy controls",
       "Finder landing pages",
       "Email + WhatsApp contact",
@@ -15,12 +15,12 @@ export const pricingTiers = [
   },
   {
     name: "Plus",
-    price: "$19",
+    price: "₹249",
     subtitle: "Most popular",
     description: "Flexible recovery workflows and delivery support.",
     highlight: true,
     features: [
-      "15 dynamic QR stickers",
+      "6 dynamic QR stickers",
       "In-app messaging",
       "Delivery handoff flow",
       "Scan alerts",
