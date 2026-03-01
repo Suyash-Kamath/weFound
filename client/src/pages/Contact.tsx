@@ -11,7 +11,7 @@ export default function Contact() {
           <div className="contact-grid">
             <div className="page-card">
               <h3>Reach the Team</h3>
-              <p>Email: support@wefound.com</p>
+              <p>Email: wefoundhq@gmail.com</p>
               <p>Phone: +91 99999 99999</p>
               <p>Location: Mumbai, India</p>
             </div>

@@ -64,7 +64,7 @@ export function HeroSection() {
               <h3 className="qr-card-title">MacBook Pro 14"</h3>
 
               <div className="qr-code-wrapper">
-              <QRCodeSVG value="https://wefound.com/s/DEMO1234" size={200} level="H" includeMargin />
+              <QRCodeSVG value="https://wefound.vercel.app/s/DEMO1234" size={200} level="H" includeMargin />
             </div>
 
               <div className="mt-4">
