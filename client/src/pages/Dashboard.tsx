@@ -40,7 +40,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!stickers.length) return;
     Promise.all(stickers.map((sticker) => loadScansForSticker(sticker.id))).catch(() => {});
-  }, [stickers.length, loadScansForSticker]);
+  }, [stickers, loadScansForSticker]);
 
   const userItems = items.filter((item) => item.userId === user?.id);
   const userStickers = stickers.filter((sticker) => sticker.userId === user?.id);
@@ -202,9 +202,11 @@ export default function Dashboard() {
                             <Link to={`/items/${item.id}/edit`} className="action-btn">
                               <Edit size={16} />
                             </Link>
-                            <Link to={`/s/${stickers.find(s => s.itemId === item.id)?.shortCode || ''}`} className="action-btn">
-                              <Eye size={16} />
-                            </Link>
+                            {stickers.find((s) => s.itemId === item.id)?.shortCode ? (
+                              <Link to={`/s/${stickers.find((s) => s.itemId === item.id)?.shortCode}`} className="action-btn">
+                                <Eye size={16} />
+                              </Link>
+                            ) : null}
                           </div>
                         </div>
                       ))}

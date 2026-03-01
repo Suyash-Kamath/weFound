@@ -28,6 +28,59 @@ interface ItemState {
   loadScansForSticker: (stickerId: string) => Promise<void>;
 }
 
+const toId = (value: unknown): string => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && typeof value.toString === "function") return value.toString();
+  return String(value);
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const normalizeSticker = (sticker: unknown): Sticker => {
+  const source = asRecord(sticker);
+  return {
+    id: toId(source.id || source._id),
+    shortCode: String(source.shortCode || ""),
+    status: (source.status as Sticker["status"]) || "pending",
+    userId: toId(source.userId),
+    itemId: source.itemId ? toId(source.itemId) : undefined,
+    createdAt: new Date(String(source.createdAt || Date.now())),
+    updatedAt: new Date(String(source.updatedAt || Date.now())),
+  };
+};
+
+const normalizeItem = (item: unknown): Item => {
+  const source = asRecord(item);
+  const photos = Array.isArray(source.photos) ? source.photos.filter((p): p is string => typeof p === "string") : [];
+  return {
+    id: toId(source.id || source._id),
+    name: String(source.name || ""),
+    description: source.description ? String(source.description) : "",
+    category: String(source.category || ""),
+    photos,
+    estimatedValue: typeof source.estimatedValue === "number" ? source.estimatedValue : undefined,
+    stickerId: source.stickerId ? toId(source.stickerId) : "",
+    userId: toId(source.userId),
+    contactOptions: source.contactOptions as Item["contactOptions"],
+    returnInstructions: source.returnInstructions ? String(source.returnInstructions) : "",
+    createdAt: new Date(String(source.createdAt || Date.now())),
+    updatedAt: new Date(String(source.updatedAt || Date.now())),
+  };
+};
+
+const normalizeScan = (scan: unknown): Scan => {
+  const source = asRecord(scan);
+  return {
+    id: toId(source.id || source._id),
+    stickerId: toId(source.stickerId),
+    timestamp: new Date(String(source.timestamp || source.createdAt || Date.now())),
+    deviceInfo: (source.deviceInfo as Scan["deviceInfo"]) || {},
+    location: source.location as Scan["location"] | undefined,
+  };
+};
+
 export const useItemStore = create<ItemState>()(
   persist(
     (set, get) => ({
@@ -37,11 +90,7 @@ export const useItemStore = create<ItemState>()(
 
       addItem: async (itemData) => {
         const response = await api.post('/items', itemData);
-        const item: Item = {
-          ...response.item,
-          createdAt: new Date(response.item.createdAt),
-          updatedAt: new Date(response.item.updatedAt),
-        };
+        const item = normalizeItem(response.item);
         set((state) => ({ items: [...state.items, item] }));
         if (item.stickerId) {
           await get().refreshStickers();
@@ -51,9 +100,10 @@ export const useItemStore = create<ItemState>()(
 
       updateItem: async (id, updates) => {
         const response = await api.put(`/items/${id}`, updates);
+        const updatedItem = normalizeItem(response.item);
         set((state) => ({
           items: state.items.map((item) =>
-            item.id === id ? { ...item, ...response.item, updatedAt: new Date(response.item.updatedAt) } : item
+            item.id === id ? updatedItem : item
           ),
         }));
       },
@@ -75,22 +125,13 @@ export const useItemStore = create<ItemState>()(
       refreshItems: async () => {
         const response = await api.get('/items');
         set({
-          items: response.items.map((item: any) => ({
-            ...item,
-            createdAt: new Date(item.createdAt),
-            updatedAt: new Date(item.updatedAt),
-          })),
+          items: response.items.map(normalizeItem),
         });
       },
 
       generateSticker: async () => {
         const response = await api.post('/stickers', { count: 1 });
-        const sticker = response.stickers[0];
-        const parsed: Sticker = {
-          ...sticker,
-          createdAt: new Date(sticker.createdAt),
-          updatedAt: new Date(sticker.updatedAt),
-        };
+        const parsed = normalizeSticker(response.stickers[0]);
         set((state) => ({ stickers: [...state.stickers, parsed] }));
         return parsed;
       },
@@ -116,10 +157,7 @@ export const useItemStore = create<ItemState>()(
 
       recordScan: async (stickerId, deviceInfo, location) => {
         const response = await api.post('/scans', { stickerId, deviceInfo, location });
-        const scan: Scan = {
-          ...response.scan,
-          timestamp: new Date(response.scan.timestamp),
-        };
+        const scan = normalizeScan(response.scan);
         set((state) => ({ scans: [...state.scans, scan] }));
         return scan;
       },
@@ -131,20 +169,13 @@ export const useItemStore = create<ItemState>()(
       refreshStickers: async () => {
         const response = await api.get('/stickers');
         set({
-          stickers: response.stickers.map((sticker: any) => ({
-            ...sticker,
-            createdAt: new Date(sticker.createdAt),
-            updatedAt: new Date(sticker.updatedAt),
-          })),
+          stickers: response.stickers.map(normalizeSticker),
         });
       },
 
       loadScansForSticker: async (stickerId) => {
         const response = await api.get(`/scans/sticker/${stickerId}`);
-        const nextScans = response.scans.map((scan: any) => ({
-          ...scan,
-          timestamp: new Date(scan.timestamp),
-        }));
+        const nextScans = response.scans.map(normalizeScan);
         set((state) => ({
           scans: [...state.scans.filter((scan) => scan.stickerId !== stickerId), ...nextScans],
         }));
