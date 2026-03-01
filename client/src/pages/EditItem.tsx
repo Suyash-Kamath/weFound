@@ -30,6 +30,12 @@ export default function EditItem() {
     phoneNumber: "",
     email: "",
   });
+  const toggleOptions: Array<{ key: "showWhatsApp" | "showCall" | "showEmail" | "showInAppChat"; label: string }> = [
+    { key: "showWhatsApp", label: "WhatsApp" },
+    { key: "showCall", label: "Phone Call" },
+    { key: "showEmail", label: "Email" },
+    { key: "showInAppChat", label: "In-App Chat" },
+  ];
 
   useEffect(() => {
     if (!item) return;
@@ -229,53 +235,27 @@ export default function EditItem() {
                   />
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
-                  {[
-                    { key: "showWhatsApp", label: "WhatsApp" },
-                    { key: "showCall", label: "Phone Call" },
-                    { key: "showEmail", label: "Email" },
-                    { key: "showInAppChat", label: "In-App Chat" },
-                  ].map((opt) => (
-                    <div key={opt.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0" }}>
-                      <label htmlFor={opt.key} style={{ fontWeight: 500 }}>{opt.label}</label>
-                      <div style={{ position: "relative", width: "44px", height: "24px" }}>
-                        <input
-                          type="checkbox"
-                          id={opt.key}
-                          checked={contactOptions[opt.key as keyof ContactOptions] as boolean}
-                          onChange={(e) => setContactOptions({ ...contactOptions, [opt.key]: e.target.checked })}
-                          style={{ opacity: 0, width: 0, height: 0 }}
-                        />
-                        <span
-                          style={{
-                            position: "absolute",
-                            cursor: "pointer",
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: contactOptions[opt.key as keyof ContactOptions] ? "var(--primary)" : "#ccc",
-                            transition: ".4s",
-                            borderRadius: "34px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              position: "absolute",
-                              content: "\"\"",
-                              height: "20px",
-                              width: "20px",
-                              left: "2px",
-                              bottom: "2px",
-                              backgroundColor: "white",
-                              transition: ".4s",
-                              borderRadius: "50%",
-                              transform:
-                                contactOptions[opt.key as keyof ContactOptions] ? "translateX(20px)" : "translateX(0)",
-                            }}
-                          />
-                        </span>
-                      </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "1rem" }}>
+                  {toggleOptions.map((opt) => (
+                    <div key={opt.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.35rem 0" }}>
+                      <label style={{ fontWeight: 500 }}>{opt.label}</label>
+                      <button
+                        type="button"
+                        aria-pressed={contactOptions[opt.key]}
+                        onClick={() => setContactOptions({ ...contactOptions, [opt.key]: !contactOptions[opt.key] })}
+                        style={{
+                          width: "86px",
+                          height: "34px",
+                          borderRadius: "999px",
+                          border: "1px solid var(--border)",
+                          background: contactOptions[opt.key] ? "rgba(59, 130, 246, 0.15)" : "var(--surface)",
+                          color: contactOptions[opt.key] ? "var(--primary)" : "var(--text-muted)",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {contactOptions[opt.key] ? "ON" : "OFF"}
+                      </button>
                     </div>
                   ))}
                 </div>
