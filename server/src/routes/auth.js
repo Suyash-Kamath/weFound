@@ -9,6 +9,19 @@ import { sendResetEmail } from "../utils/mailer.js";
 
 const router = Router();
 
+function serializeUser(user) {
+  return {
+    id: user._id.toString(),
+    email: user.email,
+    name: user.name,
+    phone: user.phone,
+    plan: user.plan || "none",
+    stickerCreditsRemaining: user.stickerCreditsRemaining || 0,
+    stickerCreditsUsed: user.stickerCreditsUsed || 0,
+    unlimitedStickers: Boolean(user.unlimitedStickers),
+  };
+}
+
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
@@ -37,7 +50,7 @@ router.post("/register", async (req, res) => {
       const token = signToken({ id: existing._id.toString(), email: existing.email, name: existing.name });
       return res.json({
         token,
-        user: { id: existing._id.toString(), email: existing.email, name: existing.name, phone: existing.phone },
+        user: serializeUser(existing),
       });
     }
     return res.status(409).json({ error: "Email already registered" });
@@ -54,7 +67,7 @@ router.post("/register", async (req, res) => {
   const token = signToken({ id: user._id.toString(), email: user.email, name: user.name });
   return res.json({
     token,
-    user: { id: user._id.toString(), email: user.email, name: user.name, phone: user.phone },
+    user: serializeUser(user),
   });
 });
 
@@ -81,7 +94,7 @@ router.post("/login", async (req, res) => {
   const token = signToken({ id: user._id.toString(), email: user.email, name: user.name });
   return res.json({
     token,
-    user: { id: user._id.toString(), email: user.email, name: user.name, phone: user.phone },
+    user: serializeUser(user),
   });
 });
 

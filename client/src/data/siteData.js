@@ -1,12 +1,13 @@
 export const pricingTiers = [
   {
-    name: "Starter",
+    name: "Basic",
     price: "₹50",
     subtitle: "Best for individuals",
-    description: "Protect item with dynamic QR profiles.",
+    description: "Great to get started with one protected item.",
     highlight: false,
+    planKey: "basic",
     features: [
-      
+      "1 dynamic QR sticker",
       "Privacy controls",
       "Finder landing pages",
       "Email + WhatsApp contact",
@@ -19,6 +20,7 @@ export const pricingTiers = [
     subtitle: "Most popular",
     description: "Flexible recovery workflows and delivery support.",
     highlight: true,
+    planKey: "plus",
     features: [
       "6 dynamic QR stickers",
       "In-app messaging",
@@ -34,6 +36,7 @@ export const pricingTiers = [
     subtitle: "Teams & fleets",
     description: "Bulk QR generation, admin controls, and exportable analytics.",
     highlight: false,
+    planKey: "business",
     features: [
       "Bulk CSV import",
       "Admin dashboard",

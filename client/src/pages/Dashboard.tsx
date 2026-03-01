@@ -17,9 +17,10 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
+import { ApiError } from "@/lib/api";
 
 export default function Dashboard() {
-  const { user, isAuthenticated, isHydrating } = useAuthStore();
+  const { user, isAuthenticated, isHydrating, hydrate } = useAuthStore();
   const { items, stickers, generateSticker, getScansBySticker, refreshItems, refreshStickers, loadScansForSticker } = useItemStore();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -53,14 +54,16 @@ export default function Dashboard() {
   const handleGenerateSticker = async () => {
     try {
       const sticker = await generateSticker(user?.id || "");
+      await hydrate();
       toast({
         title: "Sticker generated!",
         description: `Your sticker code is ${sticker.shortCode}`,
       });
     } catch (error) {
+      const description = error instanceof ApiError ? error.message : "Please try again.";
       toast({
         title: "Could not generate sticker",
-        description: "Please try again.",
+        description,
         variant: "destructive",
       });
     }
@@ -110,6 +113,9 @@ export default function Dashboard() {
   if (isHydrating) return null;
   if (!user) return null;
 
+  const remainingStickerCredits = user.unlimitedStickers ? "Unlimited" : (user.stickerCreditsRemaining || 0);
+  const canGenerateSticker = Boolean(user.unlimitedStickers || (user.stickerCreditsRemaining || 0) > 0);
+
   return (
     <div className="dashboard-layout">
       <Navbar />
@@ -135,10 +141,28 @@ export default function Dashboard() {
               <Link to="/items/new" className="btn btn-primary">
                 <Plus size={16} /> Add New Item
               </Link>
-              <button onClick={handleGenerateSticker} className="btn btn-outline">
+              <button onClick={handleGenerateSticker} className="btn btn-outline" disabled={!canGenerateSticker}>
                 <QrCode size={16} /> Generate Sticker
               </button>
             </div>
+          </motion.div>
+
+          <motion.div
+            className="page-card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            style={{ marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+          >
+            <div>
+              <p style={{ margin: 0, color: "var(--text-muted)" }}>Sticker Credits</p>
+              <h3 style={{ margin: "0.25rem 0 0 0" }}>{remainingStickerCredits} left</h3>
+            </div>
+            {!canGenerateSticker && (
+              <Link to="/pricing" className="btn btn-primary">
+                Buy Plan
+              </Link>
+            )}
           </motion.div>
 
           {/* Stats */}
@@ -235,7 +259,7 @@ export default function Dashboard() {
                     <div className="empty-state">
                       <div className="empty-icon"><QrCode size={32} /></div>
                       <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>No stickers yet. Generate your first one!</p>
-                      <button onClick={handleGenerateSticker} className="btn btn-outline btn-sm">
+                      <button onClick={handleGenerateSticker} className="btn btn-outline btn-sm" disabled={!canGenerateSticker}>
                         <QrCode size={16} /> Generate Sticker
                       </button>
                     </div>

@@ -5,6 +5,7 @@ import itemRoutes from "./items.js";
 import stickerRoutes from "./stickers.js";
 import scanRoutes from "./scans.js";
 import publicRoutes from "./public.js";
+import billingRoutes from "./billing.js";
 
 const router = Router();
 
@@ -13,6 +14,7 @@ router.use("/me", userRoutes);
 router.use("/items", itemRoutes);
 router.use("/stickers", stickerRoutes);
 router.use("/scans", scanRoutes);
+router.use("/billing", billingRoutes);
 router.use("/", publicRoutes);
 
 export default router;

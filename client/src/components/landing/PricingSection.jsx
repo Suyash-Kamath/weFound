@@ -45,7 +45,7 @@ export function PricingSection() {
                   </li>
                 ))}
               </ul>
-              <Link to="/pricing" className="btn btn-outline pricing-cta">
+              <Link to={tier.price === "Custom" ? "/contact" : `/purchase?plan=${tier.planKey}`} className="btn btn-outline pricing-cta">
                 {tier.price === "Custom" ? "Talk to Sales" : "Choose Plan"}
               </Link>
             </motion.div>

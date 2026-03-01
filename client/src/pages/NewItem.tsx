@@ -7,11 +7,12 @@ import { useItemStore } from "@/stores/itemStore";
 import { ITEM_CATEGORIES, ContactOptions } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Save, Package } from "lucide-react";
+import { ApiError } from "@/lib/api";
 
 export default function NewItem() {
   const [searchParams] = useSearchParams();
   const stickerId = searchParams.get("sticker");
-  const { user } = useAuthStore();
+  const { user, hydrate } = useAuthStore();
   const { addItem, stickers, mapStickerToItem, generateSticker } = useItemStore();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -36,32 +37,45 @@ export default function NewItem() {
     e.preventDefault();
     if (!user) return;
 
-    let finalStickerId = stickerId;
-    if (!finalStickerId) {
-      const newSticker = await generateSticker(user.id);
-      finalStickerId = newSticker.id;
+    try {
+      let finalStickerId = stickerId;
+      if (!finalStickerId) {
+        const newSticker = await generateSticker(user.id);
+        finalStickerId = newSticker.id;
+      }
+
+      const item = await addItem({
+        name,
+        description,
+        category,
+        photos: [],
+        estimatedValue: estimatedValue ? parseFloat(estimatedValue) : undefined,
+        stickerId: finalStickerId,
+        userId: user.id,
+        contactOptions,
+        returnInstructions,
+      });
+
+      await mapStickerToItem(finalStickerId, item.id);
+      await hydrate();
+
+      toast({
+        title: "Item created!",
+        description: "Your item has been registered with a QR code.",
+      });
+      navigate("/dashboard");
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Could not create item. Please try again.";
+      toast({
+        title: "Could not create item",
+        description: message,
+        variant: "destructive",
+      });
     }
-
-    const item = await addItem({
-      name,
-      description,
-      category,
-      photos: [],
-      estimatedValue: estimatedValue ? parseFloat(estimatedValue) : undefined,
-      stickerId: finalStickerId,
-      userId: user.id,
-      contactOptions,
-      returnInstructions,
-    });
-
-    await mapStickerToItem(finalStickerId, item.id);
-
-    toast({
-      title: "Item created!",
-      description: "Your item has been registered with a QR code.",
-    });
-    navigate("/dashboard");
   };
+
+  const needsNewSticker = !stickerId;
+  const noCreditsLeft = needsNewSticker && !user?.unlimitedStickers && (user?.stickerCreditsRemaining || 0) <= 0;
 
   return (
     <div className="dashboard-layout">
@@ -120,7 +134,7 @@ export default function NewItem() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="value">Estimated Value ($)</label>
+                  <label className="form-label" htmlFor="value">Estimated Value (₹)</label>
                   <input id="value" type="number" value={estimatedValue} onChange={(e) => setEstimatedValue(e.target.value)} placeholder="0.00" className="form-input" />
                 </div>
 
@@ -210,9 +224,14 @@ export default function NewItem() {
                 </div>
               </div>
 
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <button type="submit" className="btn btn-primary" disabled={noCreditsLeft} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                 <Save size={16} /> Create Item & Generate QR
               </button>
+              {noCreditsLeft && (
+                <p style={{ marginTop: "0.75rem", color: "var(--danger, #dc2626)" }}>
+                  No sticker credits left. Please purchase a plan from pricing.
+                </p>
+              )}
             </form>
           </motion.div>
         </div>

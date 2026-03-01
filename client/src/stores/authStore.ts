@@ -48,6 +48,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       hydrate: async () => {
+        set({ isHydrating: true });
         const token = getToken();
         if (!token) {
           set({ user: null, isAuthenticated: false, isHydrating: false });
@@ -70,6 +71,10 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'lostfound-auth',
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 );

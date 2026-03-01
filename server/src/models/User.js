@@ -6,6 +6,10 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true },
     phone: { type: String, default: "" },
     passwordHash: { type: String, required: true },
+    plan: { type: String, enum: ["none", "basic", "plus", "business"], default: "none" },
+    stickerCreditsRemaining: { type: Number, default: 0 },
+    stickerCreditsUsed: { type: Number, default: 0 },
+    unlimitedStickers: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

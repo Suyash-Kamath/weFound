@@ -4,6 +4,10 @@ export interface User {
   name: string;
   phone?: string;
   avatar?: string;
+  plan?: 'none' | 'basic' | 'plus' | 'business';
+  stickerCreditsRemaining?: number;
+  stickerCreditsUsed?: number;
+  unlimitedStickers?: boolean;
   createdAt: Date;
 }
 

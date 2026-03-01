@@ -8,7 +8,16 @@ const router = Router();
 router.get("/", authRequired, async (req, res) => {
   const user = await User.findById(req.user.id).lean();
   if (!user) return res.status(404).json({ error: "User not found" });
-  return res.json({ id: user._id.toString(), email: user.email, name: user.name, phone: user.phone });
+  return res.json({
+    id: user._id.toString(),
+    email: user.email,
+    name: user.name,
+    phone: user.phone,
+    plan: user.plan || "none",
+    stickerCreditsRemaining: user.stickerCreditsRemaining || 0,
+    stickerCreditsUsed: user.stickerCreditsUsed || 0,
+    unlimitedStickers: Boolean(user.unlimitedStickers),
+  });
 });
 
 router.put("/", authRequired, async (req, res) => {
@@ -28,7 +37,16 @@ router.put("/", authRequired, async (req, res) => {
   ).lean();
 
   if (!user) return res.status(404).json({ error: "User not found" });
-  return res.json({ id: user._id.toString(), email: user.email, name: user.name, phone: user.phone });
+  return res.json({
+    id: user._id.toString(),
+    email: user.email,
+    name: user.name,
+    phone: user.phone,
+    plan: user.plan || "none",
+    stickerCreditsRemaining: user.stickerCreditsRemaining || 0,
+    stickerCreditsUsed: user.stickerCreditsUsed || 0,
+    unlimitedStickers: Boolean(user.unlimitedStickers),
+  });
 });
 
 export default router;

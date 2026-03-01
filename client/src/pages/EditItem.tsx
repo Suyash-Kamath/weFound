@@ -168,7 +168,7 @@ export default function EditItem() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="value">Estimated Value ($)</label>
+                  <label className="form-label" htmlFor="value">Estimated Value (₹)</label>
                   <input
                     id="value"
                     type="number"
