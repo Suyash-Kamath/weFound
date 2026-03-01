@@ -19,23 +19,24 @@ import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isHydrating } = useAuthStore();
   const { items, stickers, generateSticker, getScansBySticker, refreshItems, refreshStickers, loadScansForSticker } = useItemStore();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [selectedSticker, setSelectedSticker] = useState<Sticker | null>(null);
 
   useEffect(() => {
+    if (isHydrating) return;
     if (!isAuthenticated) {
       navigate("/auth");
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, isHydrating, navigate]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (isHydrating || !isAuthenticated) return;
     refreshItems();
     refreshStickers();
-  }, [isAuthenticated, refreshItems, refreshStickers]);
+  }, [isAuthenticated, isHydrating, refreshItems, refreshStickers]);
 
   useEffect(() => {
     if (!stickers.length) return;
@@ -106,6 +107,7 @@ export default function Dashboard() {
     },
   ];
 
+  if (isHydrating) return null;
   if (!user) return null;
 
   return (

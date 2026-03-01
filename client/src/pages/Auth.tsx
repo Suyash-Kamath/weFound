@@ -17,15 +17,15 @@ export default function Auth() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  const { login, register, isAuthenticated } = useAuthStore();
+  const { login, register, isAuthenticated, isHydrating } = useAuthStore();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!isHydrating && isAuthenticated) {
       navigate("/dashboard");
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, isHydrating, navigate]);
 
   useEffect(() => {
     const modeParam = searchParams.get("mode");

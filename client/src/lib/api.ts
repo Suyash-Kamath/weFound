@@ -1,5 +1,17 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5050";
 
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+
+  constructor(message: string, status: number, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export function getToken() {
   return localStorage.getItem("wefound_token");
 }
@@ -26,7 +38,7 @@ async function request(path: string, options: RequestInit = {}) {
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     const message = errorBody?.error || errorBody?.message || "Request failed";
-    throw new Error(typeof message === "string" ? message : "Request failed");
+    throw new ApiError(typeof message === "string" ? message : "Request failed", response.status, errorBody);
   }
 
   return response.json();
