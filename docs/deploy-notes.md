@@ -76,3 +76,39 @@ Removed `.tsx` extension from the import path.
 - `package-lock.json`
 - `client/index.html`
 - `client/src/main.tsx`
+
+---
+
+## 5) Error
+Directly opening or refreshing frontend routes (for example `/dashboard` or `/s/ULWKGMDG`) returns:
+`404: NOT_FOUND` on Vercel.
+
+**Cause (likely)**  
+The app uses React Router (`BrowserRouter`) with client-side routes.  
+Vercel tries to find a real file for `/dashboard` or `/s/...` and returns 404 when no rewrite is configured.
+
+**Change**  
+Added SPA fallback rewrites in `client/vercel.json`:
+
+```json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+```
+
+This makes Vercel always serve `index.html` for route requests, and then React Router resolves the route on the client.
+
+**Files changed**
+- `client/vercel.json`
+
+---
+
+## How to Remember This
+- If your frontend is a SPA with `BrowserRouter`, deep links need rewrites.
+- Symptom: opening route URLs directly works in-app navigation, but fails on refresh/direct hit with hosting 404.
+- Fix on Vercel: add `vercel.json` rewrite from `/(.*)` to `/index.html`.
