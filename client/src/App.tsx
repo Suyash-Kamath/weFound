@@ -24,6 +24,7 @@ import Blog from "./pages/Blog";
 import Careers from "./pages/Careers";
 import Profile from "./pages/Profile";
 import PurchasePlan from "./pages/PurchasePlan";
+import InAppChat from "./pages/InAppChat";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,8 @@ const App = () => {
             <Route path="/careers" element={<Careers />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/purchase" element={<PurchasePlan />} />
+            <Route path="/chat" element={<InAppChat />} />
+            <Route path="/chat/:conversationId" element={<InAppChat />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/items/new" element={<NewItem />} />
             <Route path="/items/:id/edit" element={<EditItem />} />

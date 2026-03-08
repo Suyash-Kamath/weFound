@@ -20,3 +20,20 @@ export function authRequired(req, res, next) {
     return res.status(401).json({ error: "Invalid token" });
   }
 }
+
+export function optionalAuth(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload;
+    return next();
+  } catch (_error) {
+    req.user = null;
+    return next();
+  }
+}

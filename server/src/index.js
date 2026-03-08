@@ -3,10 +3,13 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
+import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
+import { Server } from "socket.io";
 import { connectDb } from "./config/db.js";
 import routes from "./routes/index.js";
+import { attachChatSocket } from "./realtime/chatSocket.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +24,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5050;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/wefound";
@@ -44,9 +48,15 @@ app.get("/health", (req, res) => {
 
 app.use("/", routes);
 
+const io = new Server(server, {
+  cors: { origin: CLIENT_ORIGIN, credentials: true },
+});
+app.set("io", io);
+attachChatSocket(io);
+
 connectDb(MONGODB_URI)
   .then(() => {
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       // eslint-disable-next-line no-console
       console.log(`weFound API running on http://localhost:${PORT}`);
     });

@@ -141,6 +141,9 @@ export default function Dashboard() {
               <Link to="/items/new" className="btn btn-primary">
                 <Plus size={16} /> Add New Item
               </Link>
+              <Link to="/chat" className="btn btn-outline">
+                <Eye size={16} /> Open Chats
+              </Link>
               <button onClick={handleGenerateSticker} className="btn btn-outline" disabled={!canGenerateSticker}>
                 <QrCode size={16} /> Generate Sticker
               </button>

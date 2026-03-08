@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -7,6 +7,7 @@ import { ContactOptions } from "@/types";
 import { QrCode, Phone, MessageCircle, Mail, Package, Truck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { getFinderSessionId } from "@/lib/finderSession";
 
 interface PublicSticker {
   id: string;
@@ -25,6 +26,7 @@ interface PublicItem {
 
 export default function ScanLanding() {
   const { shortCode } = useParams<{ shortCode: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [sticker, setSticker] = useState<PublicSticker | null>(null);
   const [item, setItem] = useState<PublicItem | null>(null);
@@ -108,15 +110,21 @@ export default function ScanLanding() {
 
   const handleInAppChat = async () => {
     try {
-      await navigator.clipboard.writeText(templateMessage);
-      toast({
-        title: "Template copied",
-        description: "Message template copied. You can paste it in chat.",
+      if (!shortCode) return;
+      const finderSessionId = getFinderSessionId();
+      const response = await api.post("/chat/start", {
+        shortCode,
+        finderSessionId,
       });
+      navigate(
+        `/chat/${response.conversation.id}?finderSessionId=${encodeURIComponent(
+          finderSessionId
+        )}&template=${encodeURIComponent(templateMessage)}`
+      );
     } catch (_error) {
       toast({
-        title: "Could not copy",
-        description: "Please copy manually from the screen.",
+        title: "Could not open chat",
+        description: "Please try again in a few seconds.",
         variant: "destructive",
       });
     }
