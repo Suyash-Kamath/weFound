@@ -12,8 +12,16 @@ const getEnv = () => {
   };
 };
 
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 async function getTransport() {
-  const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM } = getEnv();
+  const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS } = getEnv();
 
   if (!SMTP_USER || !SMTP_PASS) {
     // eslint-disable-next-line no-console
@@ -48,38 +56,48 @@ export async function sendResetEmail({ to, name, token, resetLink }) {
   if (!transport) {
     // eslint-disable-next-line no-console
     console.warn("SMTP not configured. Skipping email send.");
-    // eslint-disable-next-line no-console
-    console.log(`Reset token for ${to}: ${token}`);
-    // eslint-disable-next-line no-console
-    console.log(`Reset link: ${resetLink}`);
+    // Handy for local development only; a reset link in production logs would
+    // let anyone with log access take over the account.
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.log(`Reset link for ${to}: ${resetLink}`);
+    }
     return false;
   }
+  const displayName = name || "there";
   const subject = "Reset your weFound password";
-  const text = `Hi ${name || "there"},\n\nReset your password using this link:\n${resetLink}\n\nOr use this reset token:\n${token}\n\nIf you did not request this, you can ignore this email.\n\n- weFound`;
+  const text = `Hi ${displayName},\n\nReset your password using this link:\n${resetLink}\n\nOr use this reset token:\n${token}\n\nIf you did not request this, you can ignore this email.\n\n- weFound`;
+  const safeLink = escapeHtml(resetLink);
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #0f172a;">
       <h2>Password Reset Request</h2>
-      <p>Hi ${name || "there"},</p>
+      <p>Hi ${escapeHtml(displayName)},</p>
       <p>Click the button below to reset your password:</p>
       <p>
-        <a href="${resetLink}" style="display:inline-block;background:#0fb5a0;color:#ffffff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600;">
+        <a href="${safeLink}" style="display:inline-block;background:#0fb5a0;color:#ffffff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600;">
           Reset Password
         </a>
       </p>
       <p>If the button doesn't work, use this link:</p>
-      <p><a href="${resetLink}">${resetLink}</a></p>
-      <p>Reset token (if prompted): <strong>${token}</strong></p>
+      <p><a href="${safeLink}">${safeLink}</a></p>
+      <p>Reset token (if prompted): <strong>${escapeHtml(token)}</strong></p>
       <p>If you did not request this, you can ignore this email.</p>
       <p>— weFound</p>
     </div>
   `;
 
-  await transport.sendMail({
-    from: SMTP_FROM,
-    to,
-    subject,
-    text,
-    html,
-  });
+  try {
+    await transport.sendMail({
+      from: SMTP_FROM,
+      to,
+      subject,
+      text,
+      html,
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("Sending reset email failed:", error);
+    return false;
+  }
   return true;
 }

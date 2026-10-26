@@ -1,20 +1,28 @@
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
+// Read lazily so the value set by config/env.js is always the one used.
+const getJwtSecret = () => process.env.JWT_SECRET;
 
 export function signToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "7d" });
+}
+
+export function verifyToken(token) {
+  return jwt.verify(token, getJwtSecret());
+}
+
+function getBearerToken(req) {
+  const header = req.headers.authorization || "";
+  return header.startsWith("Bearer ") ? header.slice(7) : null;
 }
 
 export function authRequired(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  const token = getBearerToken(req);
   if (!token) {
     return res.status(401).json({ error: "Missing token" });
   }
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
+    req.user = verifyToken(token);
     return next();
   } catch (error) {
     return res.status(401).json({ error: "Invalid token" });
@@ -22,15 +30,13 @@ export function authRequired(req, res, next) {
 }
 
 export function optionalAuth(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  const token = getBearerToken(req);
   if (!token) {
     req.user = null;
     return next();
   }
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
+    req.user = verifyToken(token);
     return next();
   } catch (_error) {
     req.user = null;

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { ContactOptions } from "@/types";
 import { QrCode, Phone, MessageCircle, Mail, Package, Truck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,7 +43,8 @@ export default function ScanLanding() {
         if (!active) return;
         setSticker(response.sticker);
         setItem(response.item);
-        await api.post("/scans", {
+        // Logging the scan is best-effort; if it fails the finder must still see the item.
+        api.post("/scans", {
           shortCode,
           deviceInfo: {
             browser: navigator.userAgent.includes("Chrome")
@@ -53,7 +54,7 @@ export default function ScanLanding() {
               : "Other",
             os: navigator.platform,
           },
-        });
+        }).catch(() => {});
       } catch (error) {
         if (!active) return;
         setNotFound(true);
@@ -121,10 +122,10 @@ export default function ScanLanding() {
           finderSessionId
         )}&template=${encodeURIComponent(templateMessage)}`
       );
-    } catch (_error) {
+    } catch (error) {
       toast({
         title: "Could not open chat",
-        description: "Please try again in a few seconds.",
+        description: error instanceof ApiError ? error.message : "Please try again in a few seconds.",
         variant: "destructive",
       });
     }

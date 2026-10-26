@@ -64,9 +64,17 @@ export default function InAppChat() {
   const typingTimeoutRef = useRef<number | null>(null);
   const previousConversationRef = useRef<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const conversationsRef = useRef<ChatConversation[]>([]);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   const unreadNotifications = useMemo(() => notifications.filter((notification) => !notification.readAt).length, [notifications]);
-  const isOwner = isAuthenticated;
+  // Chats opened from a scan page carry the finder session in the URL. A logged-in
+  // user who found someone else's item must be treated as the finder there.
+  const isFinderView = Boolean(searchParams.get("finderSessionId"));
+  const isOwner = isAuthenticated && !isFinderView;
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
 
   const loadOwnerData = useCallback(async () => {
@@ -97,7 +105,6 @@ export default function InAppChat() {
     if (previousConversationRef.current && previousConversationRef.current !== conversationId) {
       socketRef.current.emit("leave-chat", previousConversationRef.current);
     }
-    socketRef.current.emit("join-chat", conversationId);
     socketRef.current.emit("chat:join", {
       conversationId,
       finderSessionId: !isOwner ? finderSessionId : undefined,
@@ -107,13 +114,11 @@ export default function InAppChat() {
 
   const sendTyping = useCallback((isTyping: boolean) => {
     if (!socketRef.current || !activeConversationId) return;
-    socketRef.current.emit(isTyping ? "typing" : "stop-typing", activeConversationId);
     socketRef.current.emit("chat:typing", {
       conversationId: activeConversationId,
       isTyping,
-      finderSessionId: !isOwner ? finderSessionId : undefined,
     });
-  }, [activeConversationId, finderSessionId, isOwner]);
+  }, [activeConversationId]);
 
   const sendMessage = useCallback(() => {
     if (!socketRef.current || !activeConversationId || !draft.trim()) return;
@@ -145,29 +150,21 @@ export default function InAppChat() {
           if (previous.some((item) => item.id === message.id)) return previous;
           return [...previous, message];
         });
-      }
-      if (isOwner) {
-        setConversations((previous) => previous.map((conversation) => {
-          if (conversation.id !== conversationId) return conversation;
-          const nextUnread = message.senderType === "finder" ? (conversation.unreadCount || 0) + 1 : conversation.unreadCount;
-          return { ...conversation, unreadCount: nextUnread };
-        }));
-      }
-    });
-
-    socket.on("message-recieved", (message) => {
-      if (message.conversationId === activeConversationId) {
-        setMessages((previous) => {
-          if (previous.some((item) => item.id === message.id)) return previous;
-          return [...previous, message];
-        });
         return;
       }
-      if (isOwner) {
+      if (!isOwner || message.senderType !== "finder") return;
+      if (!conversationsRef.current.some((conversation) => conversation.id === conversationId)) {
+        // A brand-new chat from a finder: reload the list so it shows up.
         api.get("/chat/conversations/me").then((response) => {
           setConversations(response.conversations || []);
         }).catch(() => {});
+        return;
       }
+      setConversations((previous) => previous.map((conversation) => (
+        conversation.id === conversationId
+          ? { ...conversation, unreadCount: (conversation.unreadCount || 0) + 1 }
+          : conversation
+      )));
     });
 
     socket.on("chat:typing", ({ conversationId, senderType, isTyping }) => {
@@ -176,8 +173,6 @@ export default function InAppChat() {
         setPeerTyping(Boolean(isTyping));
       }
     });
-    socket.on("typing", () => setPeerTyping(true));
-    socket.on("stop-typing", () => setPeerTyping(false));
 
     socket.on("chat:notification", ({ notification }) => {
       const isSameOpenConversation = isOwner && activeConversationId === notification.conversationId;

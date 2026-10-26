@@ -17,7 +17,6 @@ interface ItemState {
   
   // Sticker actions
   generateSticker: (userId: string) => Promise<Sticker>;
-  claimSticker: (stickerId: string) => Promise<boolean>;
   mapStickerToItem: (stickerId: string, itemId: string) => Promise<void>;
   deactivateSticker: (stickerId: string) => Promise<void>;
   refreshStickers: () => Promise<void>;
@@ -136,15 +135,6 @@ export const useItemStore = create<ItemState>()(
         return parsed;
       },
 
-      claimSticker: async (stickerId) => {
-        const response = await api.post(`/stickers/${stickerId}/claim`, {});
-        if (response?.sticker) {
-          await get().refreshStickers();
-          return true;
-        }
-        return false;
-      },
-
       mapStickerToItem: async (stickerId, itemId) => {
         await api.post(`/stickers/${stickerId}/map`, { itemId });
         await get().refreshStickers();
@@ -186,3 +176,10 @@ export const useItemStore = create<ItemState>()(
     }
   )
 );
+
+// Called on logout so the next person on this browser can't see the previous
+// user's items, stickers or scan locations.
+export const resetItemStore = () => {
+  useItemStore.setState({ items: [], stickers: [], scans: [] });
+  useItemStore.persist.clearStorage();
+};

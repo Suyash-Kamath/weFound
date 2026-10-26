@@ -18,4 +18,6 @@ const scanSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+scanSchema.index({ stickerId: 1, createdAt: -1 });
+
 export const Scan = mongoose.model("Scan", scanSchema);

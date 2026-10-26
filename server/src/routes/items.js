@@ -1,34 +1,46 @@
 import { Router } from "express";
 import { z } from "zod";
 import { authRequired } from "../middleware/auth.js";
+import { asyncHandler } from "../middleware/errors.js";
 import { Item } from "../models/Item.js";
 import { Sticker } from "../models/Sticker.js";
+import { linkStickerToItem, unlinkStickersFromItem } from "../services/stickerLinks.js";
 
 const router = Router();
 
+const objectId = z.string().regex(/^[a-f\d]{24}$/i, "Invalid id");
+
 const itemSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().optional(),
-  category: z.string().min(1),
-  photos: z.array(z.string()).optional(),
-  estimatedValue: z.number().optional(),
-  stickerId: z.string().optional(),
+  name: z.string().trim().min(1).max(120),
+  description: z.string().max(2000).optional(),
+  category: z.string().trim().min(1).max(60),
+  photos: z.array(z.string().max(2048)).max(10).optional(),
+  estimatedValue: z.number().nonnegative().finite().optional(),
+  stickerId: objectId.optional(),
   contactOptions: z.object({
     showWhatsApp: z.boolean().default(true),
     showCall: z.boolean().default(true),
     showSms: z.boolean().default(false),
     showEmail: z.boolean().default(true),
     showInAppChat: z.boolean().default(true),
-    whatsAppNumber: z.string().optional(),
-    phoneNumber: z.string().optional(),
-    email: z.string().optional(),
+    whatsAppNumber: z.string().max(30).optional(),
+    phoneNumber: z.string().max(30).optional(),
+    email: z.string().max(254).optional(),
   }),
-  returnInstructions: z.string().optional(),
+  returnInstructions: z.string().max(2000).optional(),
 });
 
-router.post("/", authRequired, async (req, res) => {
+// Only the item's owner may attach one of their own stickers to it.
+async function findOwnedSticker(stickerId, userId) {
+  return Sticker.findOne({ _id: stickerId, userId });
+}
+
+router.post("/", authRequired, asyncHandler(async (req, res) => {
   const parsed = itemSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const sticker = parsed.data.stickerId ? await findOwnedSticker(parsed.data.stickerId, req.user.id) : null;
+  if (parsed.data.stickerId && !sticker) return res.status(404).json({ error: "Sticker not found" });
 
   const item = await Item.create({
     userId: req.user.id,
@@ -37,57 +49,62 @@ router.post("/", authRequired, async (req, res) => {
     category: parsed.data.category,
     photos: parsed.data.photos || [],
     estimatedValue: parsed.data.estimatedValue,
-    stickerId: parsed.data.stickerId || null,
+    stickerId: null,
     contactOptions: parsed.data.contactOptions,
     returnInstructions: parsed.data.returnInstructions || "",
   });
 
-  if (item.stickerId) {
-    await Sticker.findByIdAndUpdate(item.stickerId, {
-      $set: { itemId: item._id, status: "active" },
-    });
+  if (sticker) {
+    await linkStickerToItem(sticker, item);
   }
 
-  return res.json({ item });
-});
+  const saved = await Item.findById(item._id).lean();
+  return res.json({ item: saved });
+}));
 
-router.get("/", authRequired, async (req, res) => {
+router.get("/", authRequired, asyncHandler(async (req, res) => {
   const items = await Item.find({ userId: req.user.id }).lean();
   return res.json({ items });
-});
+}));
 
-router.get("/:id", authRequired, async (req, res) => {
+router.get("/:id", authRequired, asyncHandler(async (req, res) => {
   const item = await Item.findOne({ _id: req.params.id, userId: req.user.id }).lean();
   if (!item) return res.status(404).json({ error: "Item not found" });
   return res.json({ item });
-});
+}));
 
-router.put("/:id", authRequired, async (req, res) => {
+router.put("/:id", authRequired, asyncHandler(async (req, res) => {
   const parsed = itemSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const item = await Item.findOneAndUpdate(
-    { _id: req.params.id, userId: req.user.id },
-    { $set: parsed.data },
-    { new: true }
-  ).lean();
+  const { stickerId, ...updates } = parsed.data;
 
-  if (!item) return res.status(404).json({ error: "Item not found" });
-  return res.json({ item });
-});
-
-router.delete("/:id", authRequired, async (req, res) => {
   const item = await Item.findOne({ _id: req.params.id, userId: req.user.id });
   if (!item) return res.status(404).json({ error: "Item not found" });
 
-  if (item.stickerId) {
-    await Sticker.findByIdAndUpdate(item.stickerId, {
-      $set: { itemId: null, status: "pending" },
-    });
+  if (stickerId && !(item.stickerId && item.stickerId.equals(stickerId))) {
+    const sticker = await findOwnedSticker(stickerId, req.user.id);
+    if (!sticker) return res.status(404).json({ error: "Sticker not found" });
+    await linkStickerToItem(sticker, item);
   }
 
+  const updated = await Item.findOneAndUpdate(
+    { _id: item._id, userId: req.user.id },
+    { $set: updates },
+    { new: true }
+  ).lean();
+
+  if (!updated) return res.status(404).json({ error: "Item not found" });
+  return res.json({ item: updated });
+}));
+
+router.delete("/:id", authRequired, asyncHandler(async (req, res) => {
+  const item = await Item.findOne({ _id: req.params.id, userId: req.user.id });
+  if (!item) return res.status(404).json({ error: "Item not found" });
+
+  await unlinkStickersFromItem(item._id);
   await item.deleteOne();
   return res.json({ success: true });
-});
+}));
 
 export default router;

@@ -1,7 +1,12 @@
 const FINDER_SESSION_KEY = "wefound_finder_session";
 
+// The session id is the finder's only proof of who they are in a chat, so it
+// must be unguessable. getRandomValues also works on plain http pages, where
+// randomUUID is unavailable.
 function fallbackId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function getFinderSessionId() {

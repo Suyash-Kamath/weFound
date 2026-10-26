@@ -1,38 +1,20 @@
-import jwt from "jsonwebtoken";
 import { Conversation } from "../models/Conversation.js";
-import {
-  createOwnerMessageNotification,
-  getRoleForConversation,
-  sendConversationMessage,
-  serializeMessage,
-  serializeNotification,
-} from "./chatService.js";
-
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
+import { verifyToken } from "../middleware/auth.js";
+import { createRateLimiter } from "../middleware/rateLimit.js";
+import { conversationRoom, deliverMessage, getRoleForConversation, userRoom } from "./chatService.js";
 
 function getUserIdFromSocket(socket) {
   const token = socket.handshake.auth?.token;
-  if (!token) return null;
+  if (!token || typeof token !== "string") return null;
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    return payload.id;
+    return verifyToken(token).id;
   } catch (_error) {
     return null;
   }
 }
 
-function ownerIsInConversationRoom(io, conversation) {
-  const roomName = `conversation:${conversation._id.toString()}`;
-  const roomSockets = io.sockets.adapter.rooms.get(roomName);
-  if (!roomSockets || !roomSockets.size) return false;
-  for (const socketId of roomSockets) {
-    const roomSocket = io.sockets.sockets.get(socketId);
-    if (roomSocket?.data?.userId === conversation.ownerId.toString()) return true;
-  }
-  return false;
-}
-
 async function resolveConversationRole(socket, conversationId, finderSessionIdOverride) {
+  if (typeof conversationId !== "string") return { error: "conversationId is required" };
   const conversation = await Conversation.findById(conversationId);
   if (!conversation) return { error: "Conversation not found" };
 
@@ -45,54 +27,61 @@ async function resolveConversationRole(socket, conversationId, finderSessionIdOv
   return { conversation, role };
 }
 
+// Every handler goes through this: a thrown error (bad id, bad payload, DB
+// hiccup) answers the client instead of crashing the server.
+function safeHandler(handler) {
+  return async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {};
+    try {
+      await handler(payload && typeof payload === "object" ? payload : {}, reply);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Chat socket handler failed:", error);
+      reply({ ok: false, error: "Something went wrong" });
+    }
+  };
+}
+
+const messageLimiter = createRateLimiter({ windowMs: 10 * 1000, max: 15 });
+
 export function attachChatSocket(io) {
   io.on("connection", (socket) => {
     socket.data.userId = getUserIdFromSocket(socket);
-    socket.data.finderSessionId = socket.handshake.auth?.finderSessionId || null;
+    const handshakeSession = socket.handshake.auth?.finderSessionId;
+    socket.data.finderSessionId = typeof handshakeSession === "string" ? handshakeSession : null;
+    // conversationId -> "owner" | "finder", filled in by a successful chat:join
+    socket.data.conversationRoles = new Map();
 
+    // The only user room a socket may join is the one proven by its login token.
     if (socket.data.userId) {
-      socket.join(`user:${socket.data.userId}`);
+      socket.join(userRoom(socket.data.userId));
     }
 
-    socket.on("setup", (userId) => {
-      if (userId) socket.join(`user:${userId}`);
-      socket.emit("connected");
-    });
-
-    socket.on("chat:join", async (payload = {}, ack = () => {}) => {
-      const { conversationId, finderSessionId } = payload;
-      if (!conversationId) {
-        ack({ ok: false, error: "conversationId is required" });
-        return;
-      }
-
+    socket.on("chat:join", safeHandler(async ({ conversationId, finderSessionId }, ack) => {
       const resolved = await resolveConversationRole(socket, conversationId, finderSessionId);
       if (resolved.error) {
         ack({ ok: false, error: resolved.error });
         return;
       }
 
-      socket.join(`conversation:${conversationId}`);
-      socket.to(`conversation:${conversationId}`).emit("remote-user-joined", socket.id);
+      socket.join(conversationRoom(conversationId));
+      socket.data.conversationRoles.set(conversationId, resolved.role);
       ack({ ok: true, role: resolved.role });
-    });
-
-    socket.on("join-chat", (conversationId) => {
-      if (!conversationId) return;
-      socket.join(`conversation:${conversationId}`);
-      socket.to(`conversation:${conversationId}`).emit("remote-user-joined", socket.id);
-    });
+    }));
 
     socket.on("leave-chat", (conversationId) => {
-      if (!conversationId) return;
-      socket.to(`conversation:${conversationId}`).emit("remote-user-left", socket.id);
-      socket.leave(`conversation:${conversationId}`);
+      if (typeof conversationId !== "string") return;
+      socket.leave(conversationRoom(conversationId));
+      socket.data.conversationRoles.delete(conversationId);
     });
 
-    const handleSendMessage = async (payload = {}, ack = () => {}) => {
-      const { conversationId, content, finderSessionId } = payload;
-      if (!conversationId || typeof content !== "string" || !content.trim()) {
-        ack({ ok: false, error: "conversationId and content are required" });
+    socket.on("chat:send", safeHandler(async ({ conversationId, content, finderSessionId }, ack) => {
+      if (typeof content !== "string" || !content.trim() || content.length > 4000) {
+        ack({ ok: false, error: "Message must be between 1 and 4000 characters" });
+        return;
+      }
+      if (!messageLimiter(socket.id)) {
+        ack({ ok: false, error: "You are sending messages too fast." });
         return;
       }
 
@@ -102,78 +91,33 @@ export function attachChatSocket(io) {
         return;
       }
 
-      const { message } = await sendConversationMessage({
+      const message = await deliverMessage({
+        io,
         conversation: resolved.conversation,
         role: resolved.role,
         content: content.trim(),
         senderUserId: socket.data.userId,
       });
-      const shouldNotifyOwner = resolved.role === "finder" && !ownerIsInConversationRoom(io, resolved.conversation);
-      const notification = shouldNotifyOwner
-        ? await createOwnerMessageNotification({
-            conversation: resolved.conversation,
-            message,
-            content: content.trim(),
-          })
-        : null;
 
-      const messagePayload = serializeMessage(message);
-      io.to(`conversation:${conversationId}`).emit("chat:message", {
-        conversationId,
-        message: messagePayload,
-      });
-      socket.to(`conversation:${conversationId}`).emit("message-recieved", messagePayload);
-      if (resolved.role === "finder") {
-        io.to(`user:${resolved.conversation.ownerId.toString()}`).emit("message-recieved", messagePayload);
-      }
+      ack({ ok: true, message });
+    }));
 
-      if (notification) {
-        io.to(`user:${resolved.conversation.ownerId.toString()}`).emit("chat:notification", {
-          notification: serializeNotification(notification),
-        });
-      }
-
-      ack({ ok: true, message: messagePayload });
-    };
-
-    socket.on("chat:send", handleSendMessage);
-
-    socket.on("new-message", async (payload = {}, ack = () => {}) => {
-      await handleSendMessage(payload, ack);
-    });
-
-    socket.on("chat:typing", async (payload = {}, ack = () => {}) => {
-      const { conversationId, isTyping, finderSessionId } = payload;
-      if (!conversationId || typeof isTyping !== "boolean") {
+    socket.on("chat:typing", safeHandler(({ conversationId, isTyping }, ack) => {
+      if (typeof conversationId !== "string" || typeof isTyping !== "boolean") {
         ack({ ok: false, error: "conversationId and isTyping are required" });
         return;
       }
 
-      const resolved = await resolveConversationRole(socket, conversationId, finderSessionId);
-      if (resolved.error) {
-        ack({ ok: false, error: resolved.error });
+      // Only sockets that passed chat:join are in the room, so this is the auth check.
+      const room = conversationRoom(conversationId);
+      const senderType = socket.data.conversationRoles.get(conversationId);
+      if (!socket.rooms.has(room) || !senderType) {
+        ack({ ok: false, error: "Join the conversation first" });
         return;
       }
 
-      socket.to(`conversation:${conversationId}`).emit("chat:typing", {
-        conversationId,
-        senderType: resolved.role,
-        isTyping,
-      });
-      socket.to(`conversation:${conversationId}`).emit(isTyping ? "typing" : "stop-typing", conversationId);
-
+      socket.to(room).emit("chat:typing", { conversationId, senderType, isTyping });
       ack({ ok: true });
-    });
-
-    socket.on("typing", (conversationId) => {
-      if (!conversationId) return;
-      socket.to(`conversation:${conversationId}`).emit("typing", conversationId);
-    });
-
-    socket.on("stop-typing", (conversationId) => {
-      if (!conversationId) return;
-      socket.to(`conversation:${conversationId}`).emit("stop-typing", conversationId);
-    });
-
+    }));
   });
 }

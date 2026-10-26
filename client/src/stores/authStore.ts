@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User } from '@/types';
 import { ApiError, api, getToken, setToken } from '@/lib/api';
+import { resetItemStore } from '@/stores/itemStore';
 
 interface AuthState {
   user: User | null;
@@ -37,6 +38,7 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         setToken(null);
+        resetItemStore();
         set({ user: null, isAuthenticated: false, isHydrating: false });
       },
 
@@ -62,6 +64,7 @@ export const useAuthStore = create<AuthState>()(
           const authFailed = error instanceof ApiError && (error.status === 401 || error.status === 403);
           if (authFailed) {
             setToken(null);
+            resetItemStore();
             set({ user: null, isAuthenticated: false, isHydrating: false });
             return;
           }

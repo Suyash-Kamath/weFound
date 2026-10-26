@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { Sticker } from "../models/Sticker.js";
 import { Item } from "../models/Item.js";
+import { asyncHandler } from "../middleware/errors.js";
+import { serializePublicContactOptions } from "../utils/serializers.js";
 
 const router = Router();
 
-router.get("/s/:shortCode", async (req, res) => {
+router.get("/s/:shortCode", asyncHandler(async (req, res) => {
   const sticker = await Sticker.findOne({ shortCode: req.params.shortCode }).lean();
-  if (!sticker || sticker.status !== "active") {
+  if (!sticker || sticker.status !== "active" || !sticker.itemId) {
     return res.status(404).json({ error: "Item not found" });
   }
 
@@ -22,10 +24,10 @@ router.get("/s/:shortCode", async (req, res) => {
       category: item.category,
       estimatedValue: item.estimatedValue,
       returnInstructions: item.returnInstructions,
-      contactOptions: item.contactOptions,
+      contactOptions: serializePublicContactOptions(item.contactOptions),
       photos: item.photos,
     },
   });
-});
+}));
 
 export default router;

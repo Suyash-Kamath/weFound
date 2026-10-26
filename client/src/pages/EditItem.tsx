@@ -5,6 +5,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { useItemStore } from "@/stores/itemStore";
 import { ITEM_CATEGORIES, ContactOptions } from "@/types";
 import { useToast } from "@/hooks/use-toast";
+import { ApiError } from "@/lib/api";
 import { ArrowLeft, Save, Package } from "lucide-react";
 
 export default function EditItem() {
@@ -69,14 +70,23 @@ export default function EditItem() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    await updateItem(item.id, {
-      name,
-      description,
-      category,
-      estimatedValue: estimatedValue ? parseFloat(estimatedValue) : undefined,
-      returnInstructions,
-      contactOptions,
-    });
+    try {
+      await updateItem(item.id, {
+        name,
+        description,
+        category,
+        estimatedValue: estimatedValue ? parseFloat(estimatedValue) : undefined,
+        returnInstructions,
+        contactOptions,
+      });
+    } catch (error) {
+      toast({
+        title: "Could not save item",
+        description: error instanceof ApiError ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     toast({
       title: "Item updated",

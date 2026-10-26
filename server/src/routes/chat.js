@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { authRequired, optionalAuth } from "../middleware/auth.js";
+import { asyncHandler } from "../middleware/errors.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 import { Item } from "../models/Item.js";
 import { Sticker } from "../models/Sticker.js";
 import { User } from "../models/User.js";
@@ -8,11 +10,10 @@ import { Conversation } from "../models/Conversation.js";
 import { ChatMessage } from "../models/ChatMessage.js";
 import { Notification } from "../models/Notification.js";
 import {
-  createOwnerMessageNotification,
+  deliverMessage,
   getRoleForConversation,
-  getUnreadCountForConversation,
+  getUnreadCounts,
   markConversationReadForOwner,
-  sendConversationMessage,
   serializeConversation,
   serializeMessage,
   serializeNotification,
@@ -20,15 +21,18 @@ import {
 
 const router = Router();
 
+const startChatLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 20 });
+const postMessageLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: "You are sending messages too fast." });
+
 const startChatSchema = z.object({
-  shortCode: z.string().min(1),
-  finderSessionId: z.string().min(8),
-  finderName: z.string().min(1).max(60).optional(),
+  shortCode: z.string().min(1).max(32),
+  finderSessionId: z.string().min(8).max(100),
+  finderName: z.string().trim().min(1).max(60).optional(),
 });
 
 const postMessageSchema = z.object({
-  content: z.string().min(1).max(4000),
-  finderSessionId: z.string().min(8).optional(),
+  content: z.string().trim().min(1).max(4000),
+  finderSessionId: z.string().min(8).max(100).optional(),
 });
 
 const getFinderSessionId = (req) => {
@@ -37,45 +41,48 @@ const getFinderSessionId = (req) => {
   return undefined;
 };
 
-const ownerIsInConversationRoom = (io, conversation) => {
-  const roomName = `conversation:${conversation._id.toString()}`;
-  const roomSockets = io?.sockets?.adapter?.rooms?.get(roomName);
-  if (!roomSockets || !roomSockets.size) return false;
-  for (const socketId of roomSockets) {
-    const socket = io.sockets.sockets.get(socketId);
-    if (socket?.data?.userId === conversation.ownerId.toString()) return true;
-  }
-  return false;
-};
+const activeConversationFilter = (stickerId, finderSessionId) => ({
+  stickerId,
+  finderSessionId,
+  status: "active",
+});
 
-router.post("/start", async (req, res) => {
+router.post("/start", startChatLimiter, asyncHandler(async (req, res) => {
   const parsed = startChatSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const sticker = await Sticker.findOne({ shortCode: parsed.data.shortCode }).lean();
-  if (!sticker || sticker.status !== "active") return res.status(404).json({ error: "Active sticker not found" });
+  if (!sticker || sticker.status !== "active" || !sticker.itemId) return res.status(404).json({ error: "Active sticker not found" });
 
   const item = await Item.findById(sticker.itemId).lean();
   if (!item) return res.status(404).json({ error: "Item not found" });
+  if (!item.contactOptions?.showInAppChat) {
+    return res.status(403).json({ error: "The owner has turned off in-app chat for this item." });
+  }
 
   const owner = await User.findById(item.userId).lean();
   if (!owner) return res.status(404).json({ error: "Owner not found" });
 
-  let conversation = await Conversation.findOne({
-    stickerId: sticker._id,
-    finderSessionId: parsed.data.finderSessionId,
-    status: "active",
-  });
+  const filter = activeConversationFilter(sticker._id, parsed.data.finderSessionId);
+  let conversation = await Conversation.findOne(filter);
 
   if (!conversation) {
-    conversation = await Conversation.create({
-      itemId: item._id,
-      stickerId: sticker._id,
-      ownerId: owner._id,
-      finderSessionId: parsed.data.finderSessionId,
-      finderName: parsed.data.finderName || "Finder",
-      status: "active",
-    });
+    try {
+      conversation = await Conversation.create({
+        itemId: item._id,
+        stickerId: sticker._id,
+        ownerId: owner._id,
+        finderSessionId: parsed.data.finderSessionId,
+        finderName: parsed.data.finderName || "Finder",
+        status: "active",
+      });
+    } catch (error) {
+      // A double tap can create the same chat twice; the unique index stops
+      // the second one, so just use the chat the first request made.
+      if (error?.code !== 11000) throw error;
+      conversation = await Conversation.findOne(filter);
+      if (!conversation) throw error;
+    }
   }
 
   const messages = await ChatMessage.find({ conversationId: conversation._id }).sort({ createdAt: 1 }).limit(200).lean();
@@ -86,9 +93,9 @@ router.post("/start", async (req, res) => {
     item: { id: item._id.toString(), name: item.name, category: item.category },
     messages: messages.map(serializeMessage),
   });
-});
+}));
 
-router.get("/conversations/me", authRequired, async (req, res) => {
+router.get("/conversations/me", authRequired, asyncHandler(async (req, res) => {
   const conversations = await Conversation.find({ ownerId: req.user.id }).sort({ updatedAt: -1 }).lean();
   const itemsById = new Map();
 
@@ -98,28 +105,25 @@ router.get("/conversations/me", authRequired, async (req, res) => {
     for (const item of items) itemsById.set(item._id.toString(), item);
   }
 
-  const payload = await Promise.all(
-    conversations.map(async (conversation) => {
-      const unreadCount = await getUnreadCountForConversation(conversation._id);
-      const item = itemsById.get(conversation.itemId.toString());
-      return {
-        ...serializeConversation(conversation, unreadCount),
-        item: item ? { id: item._id.toString(), name: item.name, category: item.category } : null,
-      };
-    })
-  );
+  const unreadCounts = await getUnreadCounts(conversations.map((conversation) => conversation._id));
+  const payload = conversations.map((conversation) => {
+    const item = itemsById.get(conversation.itemId.toString());
+    return {
+      ...serializeConversation(conversation, unreadCounts.get(conversation._id.toString()) || 0),
+      item: item ? { id: item._id.toString(), name: item.name, category: item.category } : null,
+    };
+  });
 
   return res.json({ conversations: payload });
-});
+}));
 
-router.get("/conversations/:id/messages", optionalAuth, async (req, res) => {
+router.get("/conversations/:id/messages", optionalAuth, asyncHandler(async (req, res) => {
   const conversation = await Conversation.findById(req.params.id);
   if (!conversation) return res.status(404).json({ error: "Conversation not found" });
 
-  const finderSessionId = getFinderSessionId(req);
   const role = getRoleForConversation(conversation, {
     userId: req.user?.id,
-    finderSessionId,
+    finderSessionId: getFinderSessionId(req),
   });
 
   if (!role) return res.status(403).json({ error: "Forbidden" });
@@ -135,9 +139,9 @@ router.get("/conversations/:id/messages", optionalAuth, async (req, res) => {
     role,
     messages: messages.map(serializeMessage),
   });
-});
+}));
 
-router.post("/conversations/:id/messages", optionalAuth, async (req, res) => {
+router.post("/conversations/:id/messages", postMessageLimiter, optionalAuth, asyncHandler(async (req, res) => {
   const parsed = postMessageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -151,46 +155,24 @@ router.post("/conversations/:id/messages", optionalAuth, async (req, res) => {
 
   if (!role) return res.status(403).json({ error: "Forbidden" });
 
-  const { message } = await sendConversationMessage({
+  const message = await deliverMessage({
+    io: req.app.get("io"),
     conversation,
     role,
-    content: parsed.data.content.trim(),
+    content: parsed.data.content,
     senderUserId: req.user?.id,
   });
 
-  const io = req.app.get("io");
-  const room = `conversation:${conversation._id.toString()}`;
-  const messagePayload = serializeMessage(message);
-  const shouldNotifyOwner = role === "finder" && !ownerIsInConversationRoom(io, conversation);
-  const notification = shouldNotifyOwner
-    ? await createOwnerMessageNotification({
-        conversation,
-        message,
-        content: parsed.data.content.trim(),
-      })
-    : null;
+  return res.json({ message });
+}));
 
-  if (io) {
-    io.to(room).emit("chat:message", { conversationId: conversation._id.toString(), message: messagePayload });
-    io.to(room).emit("message-recieved", messagePayload);
-    if (role === "finder") {
-      io.to(`user:${conversation.ownerId.toString()}`).emit("message-recieved", messagePayload);
-    }
-    if (notification) {
-      io.to(`user:${conversation.ownerId.toString()}`).emit("chat:notification", { notification: serializeNotification(notification) });
-    }
-  }
-
-  return res.json({ message: messagePayload });
-});
-
-router.get("/notifications/me", authRequired, async (req, res) => {
+router.get("/notifications/me", authRequired, asyncHandler(async (req, res) => {
   const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(100).lean();
   const unreadCount = await Notification.countDocuments({ userId: req.user.id, readAt: null });
   return res.json({ notifications: notifications.map(serializeNotification), unreadCount });
-});
+}));
 
-router.post("/notifications/:id/read", authRequired, async (req, res) => {
+router.post("/notifications/:id/read", authRequired, asyncHandler(async (req, res) => {
   const notification = await Notification.findOneAndUpdate(
     { _id: req.params.id, userId: req.user.id, readAt: null },
     { $set: { readAt: new Date() } },
@@ -199,11 +181,11 @@ router.post("/notifications/:id/read", authRequired, async (req, res) => {
 
   if (!notification) return res.json({ success: true });
   return res.json({ notification: serializeNotification(notification) });
-});
+}));
 
-router.post("/notifications/read-all", authRequired, async (req, res) => {
+router.post("/notifications/read-all", authRequired, asyncHandler(async (req, res) => {
   await Notification.updateMany({ userId: req.user.id, readAt: null }, { $set: { readAt: new Date() } });
   return res.json({ success: true });
-});
+}));
 
 export default router;

@@ -1,29 +1,22 @@
 import { Router } from "express";
 import { z } from "zod";
 import { authRequired } from "../middleware/auth.js";
+import { asyncHandler } from "../middleware/errors.js";
 import { User } from "../models/User.js";
+import { serializeUser } from "../utils/serializers.js";
 
 const router = Router();
 
-router.get("/", authRequired, async (req, res) => {
+router.get("/", authRequired, asyncHandler(async (req, res) => {
   const user = await User.findById(req.user.id).lean();
   if (!user) return res.status(404).json({ error: "User not found" });
-  return res.json({
-    id: user._id.toString(),
-    email: user.email,
-    name: user.name,
-    phone: user.phone,
-    plan: user.plan || "none",
-    stickerCreditsRemaining: user.stickerCreditsRemaining || 0,
-    stickerCreditsUsed: user.stickerCreditsUsed || 0,
-    unlimitedStickers: Boolean(user.unlimitedStickers),
-  });
-});
+  return res.json(serializeUser(user));
+}));
 
-router.put("/", authRequired, async (req, res) => {
+router.put("/", authRequired, asyncHandler(async (req, res) => {
   const updateSchema = z.object({
-    name: z.string().min(1).optional(),
-    phone: z.string().optional(),
+    name: z.string().trim().min(1).max(80).optional(),
+    phone: z.string().trim().max(30).optional(),
   });
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -37,16 +30,7 @@ router.put("/", authRequired, async (req, res) => {
   ).lean();
 
   if (!user) return res.status(404).json({ error: "User not found" });
-  return res.json({
-    id: user._id.toString(),
-    email: user.email,
-    name: user.name,
-    phone: user.phone,
-    plan: user.plan || "none",
-    stickerCreditsRemaining: user.stickerCreditsRemaining || 0,
-    stickerCreditsUsed: user.stickerCreditsUsed || 0,
-    unlimitedStickers: Boolean(user.unlimitedStickers),
-  });
-});
+  return res.json(serializeUser(user));
+}));
 
 export default router;
